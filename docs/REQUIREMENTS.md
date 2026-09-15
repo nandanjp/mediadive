@@ -1,6 +1,8 @@
 # Functional Requirements
 
-Terms are defined in [CONTEXT.md](./CONTEXT.md). Rules stated there are not repeated here.
+Terms are defined in [CONTEXT.md](./CONTEXT.md); the system that satisfies these
+requirements is described in [ARCHITECTURE.md](./ARCHITECTURE.md). Rules stated
+elsewhere are not repeated here.
 
 ## Roles
 
@@ -40,6 +42,8 @@ Cumulative. **Visitor** → **Member** → **Admin**.
 
 Registration and sign-in by **Google OAuth** or **email and password**. Blocking
 acts on the Account: sign-in is refused and all authored content is hidden.
+
+Multi-factor authentication is not in scope for v1.
 
 ## Search
 
@@ -82,11 +86,12 @@ A single engine gates both backend and frontend. Evaluation is **per user**, wit
 account id, role, and cohort in the evaluation context. Application behaviour must
 remain coherent with any flag off.
 
-Code targets the **OpenFeature** SDK specification; the provider is chosen during
-architecture design.
+Code targets the **OpenFeature** SDK specification. The provider is unresolved —
+see [ADR-0009](./adr/0009-feature-flag-provider.md).
 
 ## Out of scope for v1
 
 Airing calendar, and therefore Season and Episode as entities · AI and
-recommendation systems · notifications · messaging · forums · community editing of
-the catalog · flavours beyond anime, drama, and movie.
+recommendation systems · multi-factor authentication · notifications · messaging ·
+forums · community editing of the catalog · flavours beyond anime, drama, and
+movie.
