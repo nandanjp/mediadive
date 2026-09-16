@@ -23,6 +23,8 @@ Three deployables:
 | Database | PostgreSQL, one instance, schema per domain |
 | Search | Meilisearch |
 | Object storage | Garage (S3-compatible, self-hosted) |
+| Cache / rate limiting | Redis |
+| Transactional email | Resend |
 | Sessions | `tower-sessions`, Postgres-backed |
 | Passwords / OAuth | `argon2` · `oauth2` (Google) |
 | API contract | `utoipa` → OpenAPI → `openapi-typescript` |
@@ -86,7 +88,8 @@ reindex job, so it needs no backup.
 Opaque session id in an `httpOnly`, `Secure`, `SameSite` cookie, backed by a
 Postgres session table (ADR-0003). Blocking an account deletes its sessions.
 Registration and login by Google OAuth (authorization code + PKCE) or email and
-password hashed with Argon2id. The `identity` crate owns its schema so a move to
+password hashed with Argon2id. Email-and-password accounts must verify before
+first sign-in; Google accounts are verified on link, and link by verified email. The `identity` crate owns its schema so a move to
 an external IdP stays possible.
 
 ## Deployment
@@ -151,3 +154,4 @@ both.
 3. sqlx row types are never serialized to the API.
 4. Committed OpenAPI and TypeScript match the code, enforced in CI.
 5. The application behaves coherently with any feature flag off.
+6. Cache keys carry a schema version — under blue-green both colours share one Redis.

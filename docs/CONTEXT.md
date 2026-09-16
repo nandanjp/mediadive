@@ -7,11 +7,11 @@ defined here exactly once.
 
 | Entity | Definition |
 |---|---|
-| **Account** | Authentication identity. Holds email, password credential and/or linked Google identity, role (`member`/`admin`), and blocked state. |
+| **Account** | Authentication identity. Holds email, password credential and/or linked Google identity, role (`member`/`admin`), email-verified state, and blocked state. |
 | **Profile** | The public face of an Account: username slug, display name, avatar, bio, privacy switch. |
 | **Media** | One watchable work at **season** granularity. Flavour is `anime`, `drama`, or `movie`. Created only by import. |
-| **Genre** | Controlled vocabulary. Finite, curated, filterable. |
-| **Tag** | Free-form descriptor. High cardinality, filterable, not curated. |
+| **Genre** | Filterable category, created from upstream values on first sight. Admins merge near-duplicates; merged upstream strings are retained as aliases so later imports resolve without re-deciding. |
+| **Tag** | Free-form descriptor, created from upstream values. High cardinality, filterable, never curated. |
 | **Studio** | Production company or broadcast network. |
 | **Person** | A real human. Global — exists independently of any Media. |
 | **Character** | A fictional role. Belongs to exactly one Media. |
@@ -25,6 +25,7 @@ defined here exactly once.
 | **Report** | A Member-filed flag against a Review or an Account. |
 | **ModerationAction** | An Admin action taken against a Review or an Account, with reason. |
 | **TitleRequest** | A Member's request for a Media absent from the catalog. Resolved by an Admin into an import. |
+| **ImportDraft** | A mapped upstream payload awaiting admin review. Expires if abandoned. |
 
 ## Derived values
 
@@ -46,6 +47,9 @@ defined here exactly once.
 9. Seasons of one show are separate Media, disambiguated in the title, joined by MediaRelation, and surfaced individually in search.
 10. A blocked Account cannot sign in, and its content is hidden.
 11. Watch time is an estimate. Per-flavour default durations apply when a source omits them.
+12. Media and Person are identified across imports by `(source, external_id)`, unique. Re-importing that pair updates the existing record rather than duplicating it.
+13. One human imported from both sources exists as two Person rows. Accepted until a merge tool exists; name-based matching is deliberately not implemented.
+14. An email-and-password Account cannot sign in until its address is verified. A Google-linked Account is verified on link.
 
 ## Terminology
 
@@ -54,6 +58,9 @@ filters are Media attributes.
 
 **Flavour** is the kind of work a Media is. The set is closed for v1 and the model
 is deliberately flavour-agnostic so the set can grow.
+
+**Source** is the upstream provider a record was imported from — AniList for
+anime, TMDB for drama and movie. Flavour determines source.
 
 **Member** is an Account with role `member`; **Admin** is an Account with role
 `admin`; **Visitor** is an unauthenticated request.
