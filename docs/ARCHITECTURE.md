@@ -126,19 +126,9 @@ a Job before promotion, never inside the application on boot.
 
 ## Pipeline
 
-GitHub Actions, on every push:
-
-1. `cargo fmt --check`, `cargo clippy -- -D warnings`
-2. `cargo sqlx prepare --check` — committed query metadata is current
-3. Unit and integration tests against Postgres and Meilisearch service containers
-4. **Contract check** — regenerate OpenAPI and TypeScript; fail on any diff
-5. Web typecheck, lint, build
-6. Build images with `cargo-chef` layer caching; push to GHCR
-7. Bot commit bumps the image tag in `deploy/charts` — guarded against retriggering
-8. Argo CD syncs · migration Job · green deploy · smoke tests · promote
-
-Rust build times are the pipeline's dominant cost; `cargo-chef` and a shared
-`sccache` are load-bearing, not optimizations.
+GitHub Actions on every push; Argo CD reconciles from `deploy/`. Mechanics —
+branching, image tagging, promotion gating, rollback and secrets — are in
+[DELIVERY.md](./DELIVERY.md).
 
 ## Observability
 
