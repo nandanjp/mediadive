@@ -121,3 +121,48 @@ secrets, **no inbound access to the network from GitHub at all.**
 Rust build times dominate the pipeline. `cargo-chef` for Docker layer caching and
 a shared `sccache` are load-bearing. Public repositories get unlimited free Actions
 minutes on standard runners, so the constraint is wall-clock, not spend.
+
+---
+
+# Milestones
+
+**Every milestone ends deployed to production** — not merged, deployed and
+promoted. An increment that stops at `main` is a branch with extra steps.
+
+| # | Milestone | Ships | Proves |
+|---|---|---|---|
+| 0 | **Skeleton** | Workspace, `api` + `worker`, one page, Helm chart, Argo CD, SOPS bootstrap, Postgres/Redis/Meilisearch/Garage, observability, trivial smoke test | The whole pipeline: commit → image → tag bump → sync → migration hook → green → smoke → promote |
+| 1 | **Catalog** | Seed fixtures, media/person/character/credit, media page, search, cover art via the worker | Outbox, worker, Meilisearch, Garage — and a site worth looking at |
+| 2 | **Identity** | Accounts, sessions, Google OAuth, email verification, profile, rate limiting | Auth end to end, Resend, and the first real generated contract |
+| 3 | **Library** | Entries, statuses, progress, ratings, aggregates, analytics | In-transaction aggregates, coalesced index patches, cache invalidation |
+| 4 | **Reviews** | Rich text, inline spoiler marks, privacy | The AST allowlist and server-rendered public content |
+| 5 | **Lists** | Curated lists, hand-arrangement, public/private, featured | List indexing and privacy enforced at index time |
+| 6 | **Admin** | Import preview/commit, re-import diff, genre merge, title requests | The catalog grows past the seed |
+| 7 | **Moderation & editorial** | Reports, hide, block with aggregate fan-out, articles, article↔media links | The expensive fan-out path, and the last v1 capability |
+
+**v1 is milestones 0–7.**
+
+| # | Post-v1 | Notes |
+|---|---|---|
+| 8 | **Feature flag engine** | Resolves [ADR-0009](./adr/0009-feature-flag-provider.md). Deliberately late: its only consumers are milestone 9 onward, so building it earlier means infrastructure with nothing to gate. |
+| 9+ | **Follow · Vote · Comment** | The flagged capabilities in [REQUIREMENTS.md](./REQUIREMENTS.md), shipping dark behind the engine. |
+
+## Why catalog before identity
+
+The instinct is accounts first, since everything hangs off them. But the catalog
+is public, needs no auth, and *is* the product — shipping it first yields a real
+browsable site early while exercising the most novel machinery (outbox, worker,
+Meilisearch, Garage) against a small surface.
+
+The seed fixtures are what make the ordering possible: five titles applied by
+script means a populated catalog before any admin UI exists. Identity then unlocks
+the write paths, and admin import arrives in milestone 6 to grow the catalog past
+the seed.
+
+## Notes
+
+- The backward-compatibility check has no previous release to compare against
+  until milestone 1. It is inert for exactly one deploy.
+- Milestone 1 introduces the outbox, worker, Meilisearch and Garage together.
+  There is a clean seam — catalog read from Postgres, then search and images — if
+  it proves too large in practice.

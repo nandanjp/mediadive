@@ -17,7 +17,9 @@ provider support must be **verified rather than assumed**.
 - **Statsig** — managed free tier; an external dependency.
 
 ## Decision
-Deferred to implementation, pending confirmation of Rust provider support.
+Deferred to **milestone 8**, pending confirmation of Rust provider support. The
+engine's only consumers are the flagged capabilities in milestone 9 onward, so
+building it earlier means infrastructure with nothing to gate.
 
 ## Consequences
 - Code targets the OpenFeature SDK, so the choice is reversible.
