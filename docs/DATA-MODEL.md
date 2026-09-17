@@ -37,7 +37,7 @@ Terms: [CONTEXT.md](./CONTEXT.md) · Flows: [FLOWS.md](./FLOWS.md)
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `media` | `flavour` CHECK(anime, drama, movie) · `source` CHECK(anilist, tmdb) · `external_id` · **unique(source, external_id)** · `title` · `original_title` · `synopsis` · `year` · `country` · `language` · `episode_count` · `duration_minutes` · `airing_status` · `studio_id?` · `poster_thumb_key?` · `poster_full_key?` | One row per season. Title disambiguates. |
+| `media` | `flavour` CHECK(anime, drama, movie) · `source` CHECK(anilist, tmdb) · `external_id` · **unique(source, external_id)** · `title` · `original_title` · `synopsis` · `year` · `country` · `language` · `episode_count` · `duration_minutes` · `studio_id?` · `poster_thumb_key?` · `poster_full_key?` | One row per season. Title disambiguates. |
 | `genre` | `name` · `slug` unique | Created on first sight from upstream. |
 | `genre_alias` | `source` · `upstream_value` · `genre_id` · **unique(source, upstream_value)** | Survives a merge so later imports resolve without re-deciding. |
 | `media_genre` | PK(`media_id`, `genre_id`) | |
