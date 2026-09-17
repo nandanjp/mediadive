@@ -24,6 +24,7 @@ Cumulative. **Visitor** → **Member** → **Admin**.
 | Rate a Media | | • | • | v1 |
 | Write, edit, and delete Reviews (public or private) | | • | • | v1 |
 | Create, edit, and delete Lists (public or private) | | • | • | v1 |
+| Hand-arrange the order of a List | | • | • | v1 |
 | Edit Profile and set its privacy | | • | • | v1 |
 | View own Analytics | | • | • | v1 |
 | Submit a TitleRequest | | • | • | v1 |
@@ -44,6 +45,12 @@ Registration and sign-in by **Google OAuth** or **email and password**. Blocking
 acts on the Account: sign-in is refused and all authored content is hidden.
 
 Multi-factor authentication is not in scope for v1.
+
+## Ordering
+
+Lists are **hand-arranged** — the curator's order is stored and is what viewers
+see. A Library has no stored order; it sorts by derived fields (rating, status,
+progress, title, date added) chosen at view time.
 
 ## Search
 
