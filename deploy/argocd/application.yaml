@@ -1,0 +1,24 @@
+# Argo CD reconciles the umbrella chart from this repository.
+#
+# Applied once by hand during bootstrap; from then on Argo watches git. See
+# deploy/BOOTSTRAP.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mediadive
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nandanjp/mediadive.git
+    targetRevision: main
+    path: deploy/charts/mediadive
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mediadive
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

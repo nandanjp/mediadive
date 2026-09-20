@@ -122,14 +122,22 @@ an external IdP stays possible.
 ```
 Cloudflare edge (TLS)
   └── cloudflared (in-cluster)
-        └── Traefik ingress
-              ├── web
-              └── api
+        └── Traefik ingress          mediadive.nandan-hl.dev
+              ├── /api/*    → api
+              ├── /images/* → Garage
+              └── /*        → web
 ```
 
-Single k3s cluster, single environment — no staging. Postgres runs under the
-**CloudNativePG** operator with scheduled base backups and PITR to Garage, whose
-volume sits on a **different physical disk** from the Postgres PVC.
+Single k3s cluster, single node, single environment — no staging. Postgres runs
+under the **CloudNativePG** operator with scheduled base backups and PITR to
+Garage.
+
+**Accepted risk:** the Postgres volume and Garage share one disk
+(`/mnt/drive2`), so a drive failure loses the database and its backups together.
+Deliberate — the alternative was deferring the deploy over a low-traffic
+single-user system. The mitigation is that a restore is tested during bootstrap,
+so the procedure is known to work; moving Garage to a second disk, or copying
+dumps off the box, closes it whenever it becomes worth doing.
 
 Manifests are a Helm umbrella chart reconciled by **Argo CD**. Secrets are
 SOPS+age encrypted in-repo and decrypted at apply time.

@@ -55,10 +55,21 @@ skip, which defeats the gate.
 Expand/contract is otherwise enforced by memory alone, and it is the constraint
 most likely to be violated by accident months from now.
 
-**The check: apply the new migrations, then run the previous release's test suite
-against the migrated database.** If old code still passes, the migration is
-genuinely backward-compatible. If it fails, blue-green would have broken
-production — and it fails in CI instead.
+**The check: apply this commit's migrations to a fresh database, then run the
+previously deployed api *image* against it and assert the smoke suite still
+passes.** If the old binary still works, the migration is genuinely
+backward-compatible. If not, blue-green would have broken production — and it
+fails in CI instead.
+
+It has to be the published image rather than the previous commit's test suite:
+`#[sqlx::test]` creates a database per test and applies *that checkout's*
+migrations, so an old test run would never see the new schema. The image, pointed
+at an already-migrated database, reproduces the blue-green condition exactly —
+old code, new schema.
+
+The job reads the deployed revision from `deploy/charts/mediadive/values.yaml`.
+While that tag is `unset` nothing has been deployed, so the check logs that it is
+inert and passes. It becomes real alongside published images and the smoke suite.
 
 This is the same thinking as the contract drift check: a rule nobody can silently
 violate.

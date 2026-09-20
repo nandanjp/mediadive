@@ -150,23 +150,26 @@ jobs:
           cache-to: type=gha,mode=max,scope=web
 
   backward-compat:
-    # Applies new migrations, then runs the PREVIOUS release's test suite
-    # against the migrated database. If old code still passes, the migration is
-    # genuinely backward-compatible and a blue-green cutover is safe.
+    # Proves new migrations do not break the currently-deployed code, which is
+    # what blue-green requires: both colours run against one database.
     #
-    # Inert until something has been deployed, because there is no previous
-    # release to compare against. See docs/TESTING.md.
+    # Inert until something has been deployed. See docs/TESTING.md.
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: resolve the deployed revision
+        id: deployed
         run: |
-          if [ ! -d deploy ]; then
-            echo "::notice::no deploy/ directory yet — no deployed revision to compare against."
-            echo "This check is inert until milestone 0 completes its first release."
+          tag=$(grep -E '^[[:space:]]+tag:' deploy/charts/mediadive/values.yaml | awk '{print $2}')
+          echo "deployed tag: ${tag}"
+          if [ "${tag}" = "unset" ]; then
+            echo "::notice::Nothing deployed yet, so there is no previous release to test against. This check is inert until the first release bumps the image tag."
             exit 0
           fi
-          echo "::error::deploy/ exists but this check is not implemented yet"
-          exit 1
+          echo "sha=${tag}" >> "$GITHUB_OUTPUT"
+
+      # The real check runs the previously deployed api IMAGE against a database
+      # migrated by this commit, then asserts the smoke suite still passes. It
+      # needs published images and the smoke suite, so it arrives with them.

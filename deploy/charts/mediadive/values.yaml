@@ -1,0 +1,14 @@
+# Values for the mediadive umbrella chart.
+#
+# Reconciled by Argo CD from this repository. Secrets live in SOPS-encrypted
+# files alongside this one and are decrypted by the helm-secrets plugin — see
+# deploy/BOOTSTRAP.md.
+
+image:
+  registry: ghcr.io/nandanjp
+
+  # Bumped by CI on every merge to main, to the git SHA that produced the
+  # images. `unset` means nothing has been deployed yet — the
+  # backward-compatibility check reads this to know it has no previous release
+  # to compare against.
+  tag: unset

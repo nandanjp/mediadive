@@ -274,5 +274,7 @@ before decoding**, rejecting oversized images before anything is allocated.
 > Axum's default body limit is 2 MB and must be raised per route, or uploads fail
 > with a 413 that reads like a bug.
 
-**Serving** is a public-read bucket on its own hostname through the tunnel, so
-images never transit the API and cache independently.
+**Serving** is a public-read bucket routed at `/images/*` on the app hostname,
+straight to Garage by Traefik. Images never transit the API and cache
+independently, and a path keeps them same-origin on one DNS record rather than
+needing a second hostname and tunnel route.
