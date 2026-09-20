@@ -89,12 +89,22 @@ the repo; the private key never travels.
 
 Hand-run once, not GitOps. Executed from `deploy/BOOTSTRAP.md`.
 
-- [ ] k3s up, Traefik confirmed
-- [ ] `cloudflared` deployment, tunnel, DNS records
-- [ ] age keypair generated; private key installed as a cluster secret
-- [ ] Argo CD installed; `helm-secrets` configured on the repo-server
-- [ ] Argo Rollouts installed
-- [ ] namespace created
+- [x] k3s up, Traefik confirmed — `homelab`, v1.35.5+k3s1
+- [x] `cloudflared` deployment, tunnel, DNS records — all pre-existing; a
+      `*.nandan-hl.dev` wildcard route already covers the hostname
+- [x] age keypair generated; private key installed as a cluster secret
+- [x] Argo CD installed; `helm-secrets` configured on the repo-server —
+      decryption verified end to end, not just by absence of errors
+- [x] Argo Rollouts installed
+- [x] namespace created — `argocd`, `mediadive`, `observability`
+
+Also done here, beyond the list: a `mediadive-data` StorageClass on
+`/mnt/drive2`, and the CloudNativePG operator (group 7 installs the `Cluster`
+itself). Completion record and deviations: [`deploy/BOOTSTRAP.md`](../../deploy/BOOTSTRAP.md).
+
+**Still open from this group:** the StorageClass mapping lives in a ConfigMap
+owned by a k3s addon, so it does not survive a k3s restart. See the warning in
+step 6 of the runbook.
 
 ## 7 · Stateful components
 
@@ -110,10 +120,13 @@ Into the chart. **Garage first** — Postgres backups target it.
 
 ## 8 · Observability
 
-- [ ] Prometheus + Grafana
-- [ ] Loki + log collector
-- [ ] `ServiceMonitor` for api and worker
-- [ ] Grafana datasources provisioned as config, not clicked
+- [x] Prometheus + Grafana — kube-prometheus-stack 91.4.1, 7d / 20GB retention
+- [x] Loki + log collector — Loki 7.3.0 single-binary, Alloy 1.12.1 reading pod
+      logs through the Kubernetes API
+- [ ] `ServiceMonitor` for api and worker — waits on group 9; neither exists yet
+- [x] Grafana datasources provisioned as config, not clicked — Prometheus and
+      Alertmanager from the chart, Loki added in
+      [`deploy/kube-prometheus-stack-values.yaml`](../../deploy/kube-prometheus-stack-values.yaml)
 
 ## 9 · App chart and rollout
 

@@ -29,6 +29,22 @@ grafana:
     storageClassName: mediadive-data
     size: 5Gi
 
+  # The chart provisions Prometheus and Alertmanager on its own, but not Loki —
+  # Loki is a separate release. Without this, logs are collected and queryable
+  # only by hand, and the Grafana UI shows no way to reach them. Milestone 0
+  # asks for datasources provisioned as config rather than clicked, so it goes
+  # here and not in the UI.
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki-gateway.observability.svc.cluster.local
+      jsonData:
+        # Caps a single query's response; a runaway `{namespace=~".+"}` on a
+        # shared 14 GB box is otherwise a memory event, not a query.
+        maxLines: 1000
+
 # k3s runs the control plane inside a single process rather than as discrete
 # static pods, so these scrape targets do not exist. Left enabled they are
 # permanently-down targets and permanently-firing *Down alerts, which trains

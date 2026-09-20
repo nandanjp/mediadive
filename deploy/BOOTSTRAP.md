@@ -10,7 +10,7 @@ deployment model: [`../docs/DELIVERY.md`](../docs/DELIVERY.md).
 Scope is cluster-level infrastructure only — Argo CD, Argo Rollouts, operators, a
 StorageClass, the tunnel route. **Postgres, Garage, Redis, Meilisearch and the
 application itself are not installed here.** They are defined in the Helm chart
-and appear when Argo syncs, which is the point of step 9.
+and appear when Argo syncs, which is the point of step 10.
 
 ## Facts
 
@@ -40,7 +40,7 @@ out of bounds. Headroom at bootstrap: 12 cores, 13 GiB of 14 GiB free.
 
 **Accepted risk:** Postgres and Garage share `/mnt/drive2`, so a drive failure
 loses the database and its backups together. Deliberate, and recorded in
-`ARCHITECTURE.md`. This is why the restore test in step 10 is mandatory rather
+`ARCHITECTURE.md`. This is why the restore test in step 11 is mandatory rather
 than optional.
 
 ## Versions
@@ -245,7 +245,7 @@ kubectl -n kube-system rollout restart deploy/local-path-provisioner
 > Make it durable by editing the addon manifest itself, which needs root:
 >
 > ```sh
-> sudo $EDITOR /var/lib/rancher/k3s/server/manifests/local-storage.yaml
+> sudo nano /var/lib/rancher/k3s/server/manifests/local-storage.yaml
 > ```
 >
 > **Outstanding as of 2026-09-20** — the ConfigMap was patched in place, the
@@ -302,24 +302,28 @@ helm install cnpg cnpg/cloudnative-pg \
 
 ## 8 · Observability
 
+Run from the repository root. These use committed values files rather than
+`--set` flags — the flag lists in an earlier draft of this runbook were not
+enough to reproduce the install, and the Loki chart refuses to start without an
+explicit `schemaConfig`:
+
 ```sh
-helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  -n observability --version <recorded> \
-  --set prometheus.prometheusSpec.retention=7d \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=mediadive-data \
-  --set grafana.persistence.enabled=true \
-  --set grafana.persistence.storageClassName=mediadive-data
+helm upgrade --install kube-prometheus-stack \
+  prometheus-community/kube-prometheus-stack -n observability \
+  --version <recorded> -f deploy/kube-prometheus-stack-values.yaml
 
-helm install loki grafana/loki -n observability --version <recorded> \
-  --set deploymentMode=SingleBinary \
-  --set loki.storage.type=filesystem
+helm upgrade --install loki grafana/loki -n observability \
+  --version <recorded> -f deploy/loki-values.yaml
 
-helm install alloy grafana/alloy -n observability --version <recorded>
+helm upgrade --install alloy grafana/alloy -n observability \
+  --version <recorded> -f deploy/alloy-values.yaml
 ```
 
 Retention is pinned at **7 days** deliberately: the default grows without bound
 and would eventually fill the data disk regardless of how small the application
-is. Alloy is used rather than Promtail — lighter, and Promtail is deprecated.
+is. It is paired with `retentionSize: 20GB`, because a time window alone does
+not bound a disk. Alloy is used rather than Promtail — lighter, and Promtail is
+deprecated.
 
 **Verify:**
 
@@ -330,6 +334,22 @@ kubectl get crd servicemonitors.monitoring.coreos.com
 
 The `ServiceMonitor` CRD is what lets the chart declare scraping for `api` and
 `worker`.
+
+Two things here report healthy while doing nothing, so check both directly.
+**Alloy collects nothing without a config**, and **Grafana provisions no Loki
+datasource** — the chart only knows about Prometheus and Alertmanager:
+
+```sh
+# Logs actually reached Loki — expect a list of namespaces, not an empty array.
+kubectl -n observability run loki-probe --image=busybox --restart=Never --rm -i --quiet -- \
+  wget -qO- 'http://loki-gateway.observability.svc.cluster.local/loki/api/v1/label/namespace/values'
+
+# Grafana actually loaded all three datasources.
+PW=$(kubectl -n observability get secret kube-prometheus-stack-grafana \
+  -o jsonpath='{.data.admin-password}' | base64 -d)
+kubectl -n observability run gf-probe --image=curlimages/curl --restart=Never --rm -i --quiet -- \
+  -s -u "admin:$PW" http://kube-prometheus-stack-grafana.observability/api/datasources
+```
 
 ## 9 · Tunnel route
 
@@ -482,10 +502,12 @@ Restore test (step 11):       not yet run — the chart defines no Postgres yet
    ignore the alert list. Prometheus also gained `retentionSize: 20GB` alongside
    the 7-day window — time-based retention alone does not bound a disk.
 
-4. **Alloy was given a config.** The chart ships an empty one, so a default
-   install runs, reports healthy, and collects nothing. It reads pod logs through
-   the Kubernetes API rather than tailing `/var/log/pods`, so it needs no
-   hostPath mount.
+4. **Alloy was given a config, and Grafana a Loki datasource.** Both default to
+   doing nothing while reporting healthy: the Alloy chart ships an empty config,
+   and kube-prometheus-stack provisions only Prometheus and Alertmanager, so
+   logs arrive in Loki with no way to reach them from the UI. Alloy reads pod
+   logs through the Kubernetes API rather than tailing `/var/log/pods`, so it
+   needs no hostPath mount.
 
 5. **`helm`, `sops` and `age` were installed into `~/.local/bin`, not system-wide**
    — `sudo` needs a password in this session. They add no service and no
