@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "react",
+    "nextjs",
+    "import",
+    "jsx-a11y",
+    "promise"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "rules": {
+    // Next compiles with the automatic JSX runtime, so React needs no import
+    // and this legacy rule is a false positive on every component.
+    "react/react-in-jsx-scope": "off"
+  },
+  "env": {
+    "builtin": true,
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    ".next/**",
+    "node_modules/**",
+    "next-env.d.ts"
+  ]
+}

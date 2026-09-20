@@ -39,14 +39,23 @@ Groups run in order; each depends on the one above.
 
 ## 4 · CI — pull request pipeline
 
-- [ ] fmt · clippy `-D warnings` · `sqlx prepare --check`
-- [ ] tests against Postgres, Redis and Meilisearch service containers
-- [ ] contract drift check — OpenAPI and TypeScript
-- [ ] web typecheck, lint, build
-- [ ] `sccache` and cargo registry caching
-- [ ] concurrency group cancelling superseded runs
-- [ ] branch protection on `main`: PR required, checks required
-- [ ] backward-compatibility check wired, tolerating "no previous release"
+- [x] fmt · clippy `-D warnings`
+- [x] offline compile proves committed `.sqlx` covers every query
+- [x] `migrate` binary runs, proving what the Helm hook will run
+- [x] tests against a Postgres service container
+- [x] contract drift — OpenAPI in the rust job, TypeScript in the web job
+- [x] web lint (oxlint), typecheck, build
+- [x] all three images built and discarded
+- [x] `Swatinem/rust-cache` and buildx GHA cache, shared across api and worker
+- [x] concurrency group cancelling superseded runs
+- [x] backward-compatibility check wired, inert until a release exists
+- [x] workflow validated with `actionlint`
+- [ ] branch protection on `main`: PR required, checks required — **after the
+      first run**, since GitHub only allows requiring checks it has seen
+
+Redis and Meilisearch service containers are deliberately absent: nothing tests
+them yet, and unused services slow every run. They arrive with the milestone that
+needs them.
 
 ## 5 · Handoff artifacts
 
