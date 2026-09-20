@@ -1,0 +1,68 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: meilisearch
+  labels: {{- include "mediadive.labels" . | nindent 4 }}
+stringData:
+  MEILI_MASTER_KEY: "{{ .Values.secrets.meilisearch.masterKey }}"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: meilisearch-data
+  labels: {{- include "mediadive.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: {{ .Values.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.meilisearch.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meilisearch
+  labels: {{- include "mediadive.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # One writer on a ReadWriteOnce volume.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "mediadive.selector" (dict "name" "meilisearch") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mediadive.labels" . | nindent 8 }}
+        {{- include "mediadive.selector" (dict "name" "meilisearch") | nindent 8 }}
+    spec:
+      containers:
+        - name: meilisearch
+          image: getmeili/meilisearch:v1.20
+          env:
+            - { name: MEILI_ENV, value: production }
+          envFrom:
+            - secretRef:
+                name: meilisearch
+          ports:
+            - { name: http, containerPort: 7700 }
+          volumeMounts:
+            - { name: data, mountPath: /meili_data }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: meilisearch-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: meilisearch
+  labels: {{- include "mediadive.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "mediadive.selector" (dict "name" "meilisearch") | nindent 4 }}
+  ports:
+    - { name: http, port: 7700, targetPort: http }
