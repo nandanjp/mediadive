@@ -93,6 +93,8 @@ repoServer:
           value: "3.13.3"
         - name: AGE_VERSION
           value: "1.3.2"
+        - name: CURL_VERSION
+          value: "8.21.0"
         - name: HELM_PLUGINS
           value: /gitops-tools/helm-plugins/
         - name: HELM_SECRETS_CURL_PATH
@@ -105,9 +107,12 @@ repoServer:
         - |
           mkdir -p "${HELM_PLUGINS}"
 
+          # Pinned like the rest. Note this project publishes no arm64 asset —
+          # amd64, armhf, i386, ppc64le, riscv64 only — so the mapping below
+          # covers this node and would need extending on ARM.
           CURL_ARCH=$(uname -m | sed -e 's/x86_64/amd64/')
           wget -qO "${HELM_SECRETS_CURL_PATH}" \
-            "https://github.com/moparisthebest/static-curl/releases/latest/download/curl-${CURL_ARCH}"
+            "https://github.com/moparisthebest/static-curl/releases/download/v${CURL_VERSION}/curl-${CURL_ARCH}"
 
           GO_ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64$/arm64/')
           wget -qO "${HELM_SECRETS_SOPS_PATH}" \

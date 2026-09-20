@@ -1,5 +1,4 @@
 {{- $g := .Values.garage }}
-{{- $s := .Values.secrets.garage }}
 ---
 # garage.toml holds the RPC secret and admin token, so it is a Secret rather
 # than a ConfigMap.
@@ -18,7 +17,7 @@ stringData:
 
     rpc_bind_addr = "[::]:3901"
     rpc_public_addr = "127.0.0.1:3901"
-    rpc_secret = "{{ $s.rpcSecret }}"
+    rpc_secret = "{{ include "mediadive.secret" (dict "root" . "path" "garage.rpcSecret") }}"
 
     [s3_api]
     s3_region = "garage"
@@ -32,7 +31,7 @@ stringData:
 
     [admin]
     api_bind_addr = "[::]:3903"
-    admin_token = "{{ $s.adminToken }}"
+    admin_token = "{{ include "mediadive.secret" (dict "root" . "path" "garage.adminToken") }}"
 ---
 apiVersion: v1
 kind: Secret
@@ -41,8 +40,8 @@ metadata:
   labels: {{- include "mediadive.labels" . | nindent 4 }}
 stringData:
   # Consumed by CloudNativePG for backups, and by the init Job to import the key.
-  ACCESS_KEY_ID: "{{ $s.accessKeyId }}"
-  SECRET_ACCESS_KEY: "{{ $s.secretAccessKey }}"
+  ACCESS_KEY_ID: "{{ include "mediadive.secret" (dict "root" . "path" "garage.accessKeyId") }}"
+  SECRET_ACCESS_KEY: "{{ include "mediadive.secret" (dict "root" . "path" "garage.secretAccessKey") }}"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

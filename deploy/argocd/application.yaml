@@ -13,6 +13,12 @@ spec:
     repoURL: https://github.com/nandanjp/mediadive.git
     targetRevision: main
     path: deploy/charts/mediadive
+    helm:
+      valueFiles:
+        # The `secrets://` scheme is what invokes the helm-secrets plugin on the
+        # repo-server. Without this line nothing is ever decrypted and the chart
+        # renders with missing secret values.
+        - secrets://secrets.sops.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: mediadive

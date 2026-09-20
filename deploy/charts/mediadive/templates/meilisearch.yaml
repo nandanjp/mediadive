@@ -5,7 +5,7 @@ metadata:
   name: meilisearch
   labels: {{- include "mediadive.labels" . | nindent 4 }}
 stringData:
-  MEILI_MASTER_KEY: "{{ .Values.secrets.meilisearch.masterKey }}"
+  MEILI_MASTER_KEY: "{{ include "mediadive.secret" (dict "root" . "path" "meilisearch.masterKey") }}"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
