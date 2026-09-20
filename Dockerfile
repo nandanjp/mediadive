@@ -32,7 +32,7 @@ ENV SQLX_OFFLINE=true
 # CI built.
 ARG MEDIADIVE_GIT_SHA=dev
 ENV MEDIADIVE_GIT_SHA=${MEDIADIVE_GIT_SHA}
-RUN cargo build --release --locked --bin api --bin worker --bin migrate
+RUN cargo build --release --locked --bin api --bin worker --bin migrate --bin smoke
 
 # distroless: no shell, no package manager, runs as nonroot, ships CA
 # certificates. Debian 13 matches the builder's glibc.
@@ -41,9 +41,11 @@ USER nonroot
 
 FROM runtime AS api
 COPY --from=builder /build/target/release/api /usr/local/bin/api
-# The migration Job runs this same image with `migrate` as its command, so
-# schema and code can never be deployed at different versions.
+# The migration Job and the Rollouts analysis Job both run this same image with
+# a different command, so schema, code and the test that gates promotion can
+# never be deployed at different versions.
 COPY --from=builder /build/target/release/migrate /usr/local/bin/migrate
+COPY --from=builder /build/target/release/smoke /usr/local/bin/smoke
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/api"]
 
