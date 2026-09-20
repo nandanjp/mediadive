@@ -1,0 +1,104 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "mediadive",
+    "description": "Media tracking and discovery. Terms in docs/CONTEXT.md.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/version": {
+      "get": {
+        "tags": [
+          "routes"
+        ],
+        "summary": "Build identity. The smoke suite asserts this matches the SHA CI built.",
+        "operationId": "version",
+        "responses": {
+          "200": {
+            "description": "Build identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "description": "RFC 9457 problem details, plus a stable `code` clients can branch on.\n\nSee `docs/API.md`.",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable and machine-readable. Clients branch on this, never on `detail`."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Prose. May change between releases."
+          },
+          "errors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "description": "Build identity of the running service.",
+        "required": [
+          "revision",
+          "version"
+        ],
+        "properties": {
+          "revision": {
+            "type": "string",
+            "description": "Git SHA the binary was built from, or `dev` for a local build."
+          },
+          "version": {
+            "type": "string",
+            "description": "Crate version."
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+# Local dependencies. Production runs these in-cluster via the Helm chart;
+# versions here track the pins in deploy/BOOTSTRAP.md.
+name: mediadive
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: mediadive
+      POSTGRES_PASSWORD: mediadive
+      POSTGRES_DB: mediadive
+    ports: ["5433:5432"]
+    # Postgres 18+ wants a single mount at /var/lib/postgresql, not .../data,
+    # so pg_upgrade --link can work across the mount boundary.
+    volumes: ["pgdata:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediadive"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    # Pure cache — no persistence, nothing to back up.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.20
+    environment:
+      MEILI_MASTER_KEY: mediadive-dev-key
+      MEILI_ENV: development
+    ports: ["7700:7700"]
+    volumes: ["meilidata:/meili_data"]
+
+  garage:
+    image: dxflrs/garage:v2.1.0
+    volumes:
+      - ./infra/garage.toml:/etc/garage.toml:ro
+      - garagemeta:/var/lib/garage/meta
+      - garagedata:/var/lib/garage/data
+    ports: ["3900:3900", "3903:3903"]
+
+volumes:
+  pgdata:
+  meilidata:
+  garagemeta:
+  garagedata:

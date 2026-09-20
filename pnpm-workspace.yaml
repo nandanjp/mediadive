@@ -1,0 +1,8 @@
+packages:
+  - web
+  - packages/*
+
+# pnpm 12 fails the install outright when a dependency's build script is
+# unapproved, so the allowlist must be committed or CI breaks identically.
+allowBuilds:
+  unrs-resolver: true

@@ -1,0 +1,16 @@
+.git
+.github
+target
+node_modules
+**/node_modules
+web/.next
+docs
+deploy
+infra
+docker-compose.yml
+justfile
+*.md
+**/.env
+**/.env.*
+!**/.env.example
+.DS_Store

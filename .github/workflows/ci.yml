@@ -1,0 +1,172 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A force-push should supersede the in-flight run, not race it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: mediadive
+          POSTGRES_PASSWORD: mediadive
+          POSTGRES_DB: mediadive
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mediadive"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://mediadive:mediadive@localhost:5432/mediadive
+      # Compile against the committed query metadata. A query missing from
+      # .sqlx fails the build here, which is what makes the metadata trustworthy
+      # without needing sqlx-cli in CI.
+      SQLX_OFFLINE: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins the version and components, so it stays the
+      # single source of truth rather than being restated here.
+      - run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: fmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # Proves the binary the Helm pre-upgrade hook runs actually applies the
+      # schema, not just that migrations parse.
+      - name: migrate
+        run: cargo run --locked --bin migrate
+
+      # Tests connect for real: #[sqlx::test] creates a database per test and
+      # migrates it, so queries are exercised against the true schema.
+      - name: test
+        run: cargo test --workspace --locked
+
+      - name: openapi spec matches the code
+        run: |
+          cargo run -q --locked --bin openapi > /tmp/openapi.json
+          if ! diff -u packages/api-types/openapi.json /tmp/openapi.json; then
+            echo "::error::openapi.json is stale — run 'just contracts' and commit the result"
+            exit 1
+          fi
+
+  web:
+    runs-on: ubuntu-latest
+
+    env:
+      # A real value rather than SKIP_ENV_VALIDATION, so the build exercises the
+      # env schema instead of bypassing it.
+      API_URL: http://localhost:8080
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version comes from the packageManager field in the root package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: lint
+        run: pnpm -C web run lint
+
+      - name: typecheck
+        run: pnpm -C web run typecheck
+
+      - name: generated types match the spec
+        run: |
+          pnpm -C packages/api-types run generate
+          if ! git diff --exit-code -- packages/api-types/src; then
+            echo "::error::generated types are stale — run 'just contracts' and commit the result"
+            exit 1
+          fi
+
+      - name: build
+        run: pnpm -C web run build
+
+  images:
+    # Built on pull requests too, and discarded. A Dockerfile that only breaks
+    # after merge blocks the deploy instead of the PR.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: api
+          push: false
+          build-args: MEDIADIVE_GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=rust
+          cache-to: type=gha,mode=max,scope=rust
+
+      - name: worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: worker
+          push: false
+          build-args: MEDIADIVE_GIT_SHA=${{ github.sha }}
+          # Same scope as api: both targets share one builder stage, so the
+          # dependency compile is reused rather than repeated.
+          cache-from: type=gha,scope=rust
+          cache-to: type=gha,mode=max,scope=rust
+
+      - name: web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: web/Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  backward-compat:
+    # Applies new migrations, then runs the PREVIOUS release's test suite
+    # against the migrated database. If old code still passes, the migration is
+    # genuinely backward-compatible and a blue-green cutover is safe.
+    #
+    # Inert until something has been deployed, because there is no previous
+    # release to compare against. See docs/TESTING.md.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: resolve the deployed revision
+        run: |
+          if [ ! -d deploy ]; then
+            echo "::notice::no deploy/ directory yet — no deployed revision to compare against."
+            echo "This check is inert until milestone 0 completes its first release."
+            exit 0
+          fi
+          echo "::error::deploy/ exists but this check is not implemented yet"
+          exit 1

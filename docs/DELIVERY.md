@@ -17,16 +17,18 @@ Long-lived feature work hides behind flags rather than branches.
 | Stage | Pull request | Merge to `main` |
 |---|---|---|
 | `cargo fmt --check`, `cargo clippy -D warnings` | • | • |
-| `cargo sqlx prepare --check` | • | • |
+| Offline compile — committed `.sqlx` covers every query | • | • |
 | Unit, integration and index tests | • | • |
 | Contract drift check — OpenAPI and TypeScript | • | • |
 | Backward-compatibility check against previous release | • | • |
 | Web typecheck, lint, build | • | • |
-| Build and push images | | • |
+| Build images | • | • |
+| Push images | | • |
 | Bump image tag in `deploy/` | | • |
 
-PRs build images and throw them away. Only `main` publishes, so the registry
-never fills with dead branches.
+Pull requests build images and discard them — a Dockerfile that only breaks
+after merge blocks the deploy instead of the PR. Only `main` pushes, so the
+registry never fills with dead branches.
 
 ## Images
 
@@ -118,9 +120,11 @@ secrets, **no inbound access to the network from GitHub at all.**
 
 ## Build cost
 
-Rust build times dominate the pipeline. `cargo-chef` for Docker layer caching and
-a shared `sccache` are load-bearing. Public repositories get unlimited free Actions
-minutes on standard runners, so the constraint is wall-clock, not spend.
+Rust build times dominate the pipeline, so caching is load-bearing:
+`cargo-chef` for Docker layers, buildx GHA cache shared between the `api` and
+`worker` targets (one builder stage serves both), and `Swatinem/rust-cache` for
+workflow jobs. Public repositories get unlimited free Actions minutes on standard
+runners, so the constraint is wall-clock, not spend.
 
 ---
 

@@ -11,9 +11,12 @@ Rust, with Axum on tokio. sqlx for data access — compile-time-verified SQL
 against a real schema, no ORM.
 
 ## Consequences
-- Compile times dominate CI. `cargo-chef` layer caching and a shared `sccache`
-  are required, not optional.
-- sqlx needs query metadata at build time: `.sqlx` is committed and CI verifies
-  it with `cargo sqlx prepare --check`.
+- Compile times dominate CI. `cargo-chef` caches the dependency layer in image
+  builds and `Swatinem/rust-cache` caches the registry and `target/` in
+  workflows. Both are required, not optional.
+- sqlx needs query metadata at build time, so `.sqlx` is committed. CI compiles
+  with `SQLX_OFFLINE=true`, which fails on any query the metadata does not cover
+  — no sqlx-cli needed in the pipeline. Tests then run against a real Postgres,
+  so queries are also exercised against the true schema.
 - sqlx teaches SQL rather than hiding it, which suits the goal.
 - Ecosystem maturity is uneven at the edges — notably OpenFeature (ADR-0009).
