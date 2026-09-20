@@ -27,8 +27,10 @@ Three deployables:
 | Transactional email | Resend |
 | Sessions | `tower-sessions`, Postgres-backed |
 | Passwords / OAuth | `argon2` · `oauth2` (Google) |
-| API contract | `utoipa` → OpenAPI → `openapi-typescript` |
+| API contract | `utoipa` → OpenAPI → `@hey-api/openapi-ts` (types + zod) |
 | Frontend | Next.js App Router · TipTap (rich text, inline spoiler marks) |
+| Config validation | Rust: typed and validated at boot · Web: zod + t3-env |
+| Client data | TanStack Query (interactive and per-user state) |
 | Telemetry | `tracing` → structured JSON · Prometheus metrics |
 | Feature flags | OpenFeature SDK; provider open (ADR-0009) |
 | Orchestration | k3s · Helm · Argo CD · Argo Rollouts |
@@ -64,6 +66,29 @@ later mechanical.
 Row structs → domain types → DTOs. **sqlx row types are never serialized.** The
 DTO layer in `contracts` is the only thing that crosses the network, and the only
 thing exported to TypeScript. This decouples column renames from API breakage.
+
+## Frontend data fetching
+
+Two paths, split by who the data belongs to.
+
+**Server components** render public, cacheable, SEO-relevant data — catalog,
+media, person, profile and article pages. They call the API directly over its
+internal URL.
+
+**TanStack Query** owns interactive per-user state: library entries, ratings,
+forms, anything that mutates or paginates. A query is defined once with
+`queryOptions` and shared between the server prefetch and the client `useQuery`,
+so a page arrives hydrated with no loading flash and no second request.
+
+**The browser never calls the API directly.** `next.config.ts` rewrites `/api/*`
+to the API, keeping browser requests same-origin so session cookies are sent —
+identically in development, where web and api are on different ports, and in
+production, where they share a hostname.
+
+**Cache policy belongs on each query, not in the fetch helper.** A query with no
+explicit policy is prerendered at build time — correct for a catalog page, and
+wrong for anything per-user or live, which would otherwise ship with build-time
+data baked in.
 
 ## Consistency
 

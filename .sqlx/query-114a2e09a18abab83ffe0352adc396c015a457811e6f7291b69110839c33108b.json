@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "update platform.outbox set claimed_at = null, last_error = $2 where id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "114a2e09a18abab83ffe0352adc396c015a457811e6f7291b69110839c33108b"
+}
