@@ -1,0 +1,68 @@
+# Loki — installed by hand at bootstrap (BOOTSTRAP.md step 8).
+#
+#   helm upgrade --install loki grafana/loki -n observability \
+#     --version 7.3.0 -f deploy/loki-values.yaml
+#
+# Single-binary, filesystem-backed: one node, one small application. The
+# distributed modes this chart defaults towards would schedule a dozen pods
+# that have nowhere to spread to.
+#
+# `schemaConfig` is not optional. Chart 6.0+ refuses to install without it
+# rather than silently picking a schema that cannot be migrated later.
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2026-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    # Matches Prometheus retention, and for the same reason: the data disk is
+    # shared with Postgres.
+    retention_period: 168h
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    storageClass: mediadive-data
+    size: 20Gi
+
+# Everything below belongs to the distributed deployment modes.
+backend: { replicas: 0 }
+read: { replicas: 0 }
+write: { replicas: 0 }
+ingester: { replicas: 0 }
+querier: { replicas: 0 }
+queryFrontend: { replicas: 0 }
+queryScheduler: { replicas: 0 }
+distributor: { replicas: 0 }
+compactor: { replicas: 0 }
+indexGateway: { replicas: 0 }
+bloomCompactor: { replicas: 0 }
+bloomGateway: { replicas: 0 }
+
+# Self-monitoring pulls in Promtail and a Grafana Agent operator; Alloy already
+# ships logs here.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+lokiCanary:
+  enabled: false
+test:
+  enabled: false

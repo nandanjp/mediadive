@@ -1,0 +1,12 @@
+# SOPS encryption rules.
+#
+# The recipient below is the age PUBLIC key. Its private half is installed in
+# the cluster as the `sops-age` secret in the `argocd` namespace and is held in
+# a password manager — it never enters this repository. See deploy/BOOTSTRAP.md
+# step 3.
+#
+# This repository is public, so the ciphertext is public too. Anything
+# committed in plaintext by mistake is rotated, not merely deleted.
+creation_rules:
+  - path_regex: deploy/.*\.sops\.ya?ml$
+    age: age14fewqugfz73kxscwghlr20avuehy9z0ya2katsyum6gflhcs4e3q5q54yu

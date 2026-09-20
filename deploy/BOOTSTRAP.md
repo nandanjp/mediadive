@@ -10,7 +10,7 @@ deployment model: [`../docs/DELIVERY.md`](../docs/DELIVERY.md).
 Scope is cluster-level infrastructure only — Argo CD, Argo Rollouts, operators, a
 StorageClass, the tunnel route. **Postgres, Garage, Redis, Meilisearch and the
 application itself are not installed here.** They are defined in the Helm chart
-and appear when Argo syncs, which is the point of step 9.
+and appear when Argo syncs, which is the point of step 10.
 
 ## Facts
 
@@ -24,15 +24,23 @@ Fill in the blanks and commit this file.
 | Nodes | 1 |
 | CPU / RAM | 12 cores / 15.7 GB |
 | Data disk | `/mnt/drive2` — Postgres volumes **and** Garage |
-| Cluster state at start | Empty; nothing else deployed |
-| Node name | _to record_ |
-| k3s version | _to record_ |
-| cloudflared location | _to record: host service, or container_ |
-| cloudflared management | _to record: local config file, or Cloudflare dashboard_ |
+| Cluster state at start | **Not empty** — see the note below |
+| Node name | `homelab` (192.168.1.157) |
+| k3s version | `v1.35.5+k3s1`, containerd `2.2.3-k3s1` |
+| cloudflared location | Container — `Deployment/cloudflared` in the `cloudflared` namespace, 2 replicas |
+| cloudflared management | Cloudflare dashboard (token mode: `tunnel --no-autoupdate run` with `TUNNEL_TOKEN`) |
+
+**Correction, recorded 2026-09-20.** The cluster was *not* empty at start. It
+carries `vault`, `personal` and `cloudflared` namespaces from earlier work on
+this box. Every application Deployment and StatefulSet in `vault` and
+`personal` is scaled to **0**, so nothing competes for CPU or memory — but the
+Services, PVCs and PVs are live objects, and four PVs in `vault` carry a
+`deletionTimestamp` and must not be disturbed. Treat those two namespaces as
+out of bounds. Headroom at bootstrap: 12 cores, 13 GiB of 14 GiB free.
 
 **Accepted risk:** Postgres and Garage share `/mnt/drive2`, so a drive failure
 loses the database and its backups together. Deliberate, and recorded in
-`ARCHITECTURE.md`. This is why the restore test in step 10 is mandatory rather
+`ARCHITECTURE.md`. This is why the restore test in step 11 is mandatory rather
 than optional.
 
 ## Versions
@@ -43,12 +51,12 @@ current.
 
 | Component | Chart | Resolve with | Installed |
 |---|---|---|---|
-| Argo CD | `argo/argo-cd` | `helm search repo argo/argo-cd --versions \| head -3` | _record_ |
-| Argo Rollouts | `argo/argo-rollouts` | `helm search repo argo/argo-rollouts --versions \| head -3` | _record_ |
-| CloudNativePG | `cnpg/cloudnative-pg` | `helm search repo cnpg/cloudnative-pg --versions \| head -3` | _record_ |
-| Prometheus stack | `prometheus-community/kube-prometheus-stack` | `helm search repo prometheus-community/kube-prometheus-stack --versions \| head -3` | _record_ |
-| Loki | `grafana/loki` | `helm search repo grafana/loki --versions \| head -3` | _record_ |
-| Alloy | `grafana/alloy` | `helm search repo grafana/alloy --versions \| head -3` | _record_ |
+| Argo CD | `argo/argo-cd` | `helm search repo argo/argo-cd --versions \| head -3` | `10.9.2` (app v3.5.3) |
+| Argo Rollouts | `argo/argo-rollouts` | `helm search repo argo/argo-rollouts --versions \| head -3` | `2.43.2` (app v1.10.0) |
+| CloudNativePG | `cnpg/cloudnative-pg` | `helm search repo cnpg/cloudnative-pg --versions \| head -3` | `0.29.0` (app 1.30.0) |
+| Prometheus stack | `prometheus-community/kube-prometheus-stack` | `helm search repo prometheus-community/kube-prometheus-stack --versions \| head -3` | `91.4.1` (app v0.94.0) |
+| Loki | `grafana/loki` | `helm search repo grafana/loki --versions \| head -3` | `7.3.0` (app 3.6.12) |
+| Alloy | `grafana/alloy` | `helm search repo grafana/alloy --versions \| head -3` | `1.12.1` (app v1.19.2) |
 
 ## Before starting
 
@@ -158,6 +166,18 @@ configs:
 the current `helm-secrets` and Argo CD documentation rather than guessing — the
 plugin wiring has changed across Argo CD versions.
 
+**Done 2026-09-20 — the working file is [`argocd-values.yaml`](./argocd-values.yaml),
+committed.** It follows the upstream helm-secrets *Option 2: Init Container*
+recipe, trimmed to the sops/age backend. Two things the sketch above gets wrong
+and the real file gets right, both of which fail quietly:
+
+- `HELM_PLUGINS` is a directory **of** plugins, so it points at
+  `/gitops-tools/helm-plugins/`, not at the plugin itself. Pointed one level too
+  deep, helm finds no plugins and the `secrets://` scheme fails as an unknown
+  protocol rather than as a missing plugin.
+- `HELM_SECRETS_VALUES_ALLOW_ABSOLUTE_PATH=true` is required. Argo CD hands value
+  files to helm as absolute paths, and helm-secrets rejects those by default.
+
 **Verify:**
 
 ```sh
@@ -165,8 +185,26 @@ kubectl -n argocd get pods
 kubectl -n argocd logs deploy/argocd-repo-server | grep -i sops
 ```
 
-All pods `Running`, and the repo-server shows no SOPS errors. A real decryption
-test comes in step 9, when the chart first contains an encrypted value.
+All pods `Running`, and the repo-server shows no SOPS errors.
+
+Clean logs only prove nothing crashed. **Prove decryption instead** — encrypt a
+throwaway file with the committed public recipient and decrypt it with the key
+the cluster actually holds:
+
+```sh
+printf 'canary: it-decrypts\n' > deploy/probe.sops.yaml   # under deploy/, so
+sops --encrypt --in-place deploy/probe.sops.yaml           # .sops.yaml matches
+POD=$(kubectl -n argocd get pod -l app.kubernetes.io/name=argocd-repo-server \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl -n argocd cp deploy/probe.sops.yaml "argocd/$POD:/tmp/probe.sops.yaml" -c repo-server
+kubectl -n argocd exec "$POD" -c repo-server -- sh -c \
+  'SOPS_AGE_KEY_FILE=/helm-secrets-private-keys/keys.txt /gitops-tools/sops -d /tmp/probe.sops.yaml'
+rm -f deploy/probe.sops.yaml
+```
+
+`canary: it-decrypts` is the pass condition. Anything else means the key in the
+cluster and the recipient in `.sops.yaml` are not a pair, which no later step
+will tell you until a sync fails.
 
 ## 5 · Argo Rollouts
 
@@ -194,6 +232,25 @@ Add a `storageClassConfigs` entry mapping `mediadive-data` to
 ```sh
 kubectl -n kube-system rollout restart deploy/local-path-provisioner
 ```
+
+> **This edit is not durable.** `local-path-config` is owned by a k3s *Addon*
+> (`objectset.rio.cattle.io/owner-name: local-storage`), so k3s reapplies it
+> from `/var/lib/rancher/k3s/server/manifests/local-storage.yaml` on restart and
+> on upgrade, dropping the `storageClassConfigs` entry. Nothing breaks loudly:
+> volumes already provisioned keep their recorded host path, but the **next**
+> PVC on `mediadive-data` silently lands on `/var/lib/rancher/k3s/storage` —
+> the OS disk — instead of the data disk. That is exactly the failure the probe
+> below is meant to catch, reappearing months later.
+>
+> Make it durable by editing the addon manifest itself, which needs root:
+>
+> ```sh
+> sudo nano /var/lib/rancher/k3s/server/manifests/local-storage.yaml
+> ```
+>
+> **Outstanding as of 2026-09-20** — the ConfigMap was patched in place, the
+> addon manifest was not. Re-check the ConfigMap after any k3s restart until it
+> is done.
 
 Create the class:
 
@@ -245,24 +302,28 @@ helm install cnpg cnpg/cloudnative-pg \
 
 ## 8 · Observability
 
+Run from the repository root. These use committed values files rather than
+`--set` flags — the flag lists in an earlier draft of this runbook were not
+enough to reproduce the install, and the Loki chart refuses to start without an
+explicit `schemaConfig`:
+
 ```sh
-helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  -n observability --version <recorded> \
-  --set prometheus.prometheusSpec.retention=7d \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=mediadive-data \
-  --set grafana.persistence.enabled=true \
-  --set grafana.persistence.storageClassName=mediadive-data
+helm upgrade --install kube-prometheus-stack \
+  prometheus-community/kube-prometheus-stack -n observability \
+  --version <recorded> -f deploy/kube-prometheus-stack-values.yaml
 
-helm install loki grafana/loki -n observability --version <recorded> \
-  --set deploymentMode=SingleBinary \
-  --set loki.storage.type=filesystem
+helm upgrade --install loki grafana/loki -n observability \
+  --version <recorded> -f deploy/loki-values.yaml
 
-helm install alloy grafana/alloy -n observability --version <recorded>
+helm upgrade --install alloy grafana/alloy -n observability \
+  --version <recorded> -f deploy/alloy-values.yaml
 ```
 
 Retention is pinned at **7 days** deliberately: the default grows without bound
 and would eventually fill the data disk regardless of how small the application
-is. Alloy is used rather than Promtail — lighter, and Promtail is deprecated.
+is. It is paired with `retentionSize: 20GB`, because a time window alone does
+not bound a disk. Alloy is used rather than Promtail — lighter, and Promtail is
+deprecated.
 
 **Verify:**
 
@@ -273,6 +334,22 @@ kubectl get crd servicemonitors.monitoring.coreos.com
 
 The `ServiceMonitor` CRD is what lets the chart declare scraping for `api` and
 `worker`.
+
+Two things here report healthy while doing nothing, so check both directly.
+**Alloy collects nothing without a config**, and **Grafana provisions no Loki
+datasource** — the chart only knows about Prometheus and Alertmanager:
+
+```sh
+# Logs actually reached Loki — expect a list of namespaces, not an empty array.
+kubectl -n observability run loki-probe --image=busybox --restart=Never --rm -i --quiet -- \
+  wget -qO- 'http://loki-gateway.observability.svc.cluster.local/loki/api/v1/label/namespace/values'
+
+# Grafana actually loaded all three datasources.
+PW=$(kubectl -n observability get secret kube-prometheus-stack-grafana \
+  -o jsonpath='{.data.admin-password}' | base64 -d)
+kubectl -n observability run gf-probe --image=curlimages/curl --restart=Never --rm -i --quiet -- \
+  -s -u "admin:$PW" http://kube-prometheus-stack-grafana.observability/api/datasources
+```
 
 ## 9 · Tunnel route
 
@@ -291,12 +368,31 @@ Then add a public hostname:
 | Field | Value |
 |---|---|
 | Hostname | `mediadive.nandan-hl.dev` |
-| Service | `http://localhost:80` (Traefik binds the node's port 80) |
+| Service | `http://traefik.kube-system.svc.cluster.local:80` |
+
+> **Corrected 2026-09-20 — `http://localhost:80` is wrong on this cluster.**
+> `cloudflared` runs *in* the cluster, so `localhost` inside that pod is the
+> `cloudflared` pod, not the node. A route pointing there registers cleanly and
+> then 502s every request. The origin has to be the cluster-internal Traefik
+> Service, which is what every other hostname on this tunnel already uses.
 
 - **Dashboard-managed tunnel** → **this is a human step.** Stop and ask; it
   cannot be done from the command line.
 - **Config-file-managed tunnel** → add an ingress rule to the tunnel config and
   restart `cloudflared`.
+
+**Resolved 2026-09-20 with no action required.** The tunnel is dashboard-managed,
+but a `*.nandan-hl.dev` wildcard route already points at the in-cluster Traefik
+Service, and it covers `mediadive.nandan-hl.dev`. Both verifies below pass
+already. Confirm it is genuinely Traefik answering and not a Cloudflare error
+page — compare the bodies, since both are `404`:
+
+```sh
+curl -s https://mediadive.nandan-hl.dev                       # → 404 page not found
+curl -s -H 'Host: mediadive.nandan-hl.dev' http://localhost:80 # → identical body
+```
+
+If the wildcard is ever narrowed, this becomes a human step again.
 
 **Verify** — a 404 from Traefik is the correct result here, because no
 application exists yet. It proves routing works, not that the app does:
@@ -374,15 +470,67 @@ infrastructure.
 ## Completion record
 
 ```
-Date:
-Node name:                    k3s version:
-Argo CD:                      Argo Rollouts:
-CloudNativePG:                Prometheus stack:
-Loki:                         Alloy:
-cloudflared:                  host service / container — config file / dashboard
-StorageClass probe:           passed / failed
-Tunnel verify (local / external):
-Argo Application status:
-Restore test (step 11):       passed / failed / not yet run
-Deviations from this runbook:
+Date:                         2026-09-20
+Node name:                    homelab            k3s version: v1.35.5+k3s1
+Argo CD:                      10.9.2 (v3.5.3)    Argo Rollouts: 2.43.2 (v1.10.0)
+CloudNativePG:                0.29.0 (1.30.0)    Prometheus stack: 91.4.1 (v0.94.0)
+Loki:                         7.3.0 (3.6.12)     Alloy: 1.12.1 (v1.19.2)
+cloudflared:                  container (in-cluster Deployment) — dashboard-managed
+StorageClass probe:           passed
+Tunnel verify (local / external):  404 / 404, identical bodies — Traefik answering
+Argo Application status:      Synced / Healthy, zero resources
+Restore test (step 11):       not yet run — the chart defines no Postgres yet
 ```
+
+### Deviations from this runbook
+
+1. **Steps 4 and 8 use committed values files, not `--set` flags.** `helm-secrets`
+   needs more wiring than a flag list, and the Loki chart refuses to install
+   without an explicit `schemaConfig`. All four are in `deploy/`:
+   `argocd-values.yaml`, `kube-prometheus-stack-values.yaml`, `loki-values.yaml`,
+   `alloy-values.yaml`. Every downloaded binary version in them is pinned.
+
+2. **`vals` and `kubectl` are not installed on the repo-server.** Upstream's
+   example downloads both; they serve the `vals` backend and the
+   `secrets+*-import-kubernetes://` schemes, neither of which this repository
+   uses. Add them back if either is ever adopted.
+
+3. **kube-prometheus-stack has the k3s control-plane scrape targets disabled**
+   (`kubeControllerManager`, `kubeScheduler`, `kubeProxy`, `kubeEtcd`). k3s runs
+   the control plane in one process rather than as static pods, so these targets
+   do not exist; left enabled they alert permanently, which teaches everyone to
+   ignore the alert list. Prometheus also gained `retentionSize: 20GB` alongside
+   the 7-day window — time-based retention alone does not bound a disk.
+
+4. **Alloy was given a config, and Grafana a Loki datasource.** Both default to
+   doing nothing while reporting healthy: the Alloy chart ships an empty config,
+   and kube-prometheus-stack provisions only Prometheus and Alertmanager, so
+   logs arrive in Loki with no way to reach them from the UI. Alloy reads pod
+   logs through the Kubernetes API rather than tailing `/var/log/pods`, so it
+   needs no hostPath mount.
+
+5. **`helm`, `sops` and `age` were installed into `~/.local/bin`, not system-wide**
+   — `sudo` needs a password in this session. They add no service and no
+   listening port, so the host inventory in `~/CLAUDE.md` is unchanged. `age` is
+   also available from `apt`.
+
+6. **Step 6's ConfigMap edit is not yet durable.** See the warning in that step:
+   it needs a root edit of the k3s addon manifest, which has not been done.
+
+### Outstanding after this run
+
+| Item | Why it matters |
+|---|---|
+| Persist `storageClassConfigs` in `/var/lib/rancher/k3s/server/manifests/local-storage.yaml` | Needs root. Until then a k3s restart silently sends the next `mediadive-data` PVC to the OS disk. |
+| Restore test (step 11) | Mandatory, blocked until the chart defines Postgres. The backup shares a disk with the database, so the procedure working *is* the backup. |
+| Argo CD has no ingress | Reachable only via `kubectl port-forward svc/argocd-server -n argocd 8080:443`. `server.insecure` is already set, so an Ingress on the wildcard is a small addition if it is wanted. |
+| Grafana has no ingress | Same; `kubectl port-forward svc/kube-prometheus-stack-grafana -n observability 3000:80`. |
+
+### A note on `/mnt/drive2` and Samba
+
+`~/CLAUDE.md` records that the host exports `/mnt/drive2` read-write over SMB as
+`[media2]`. That is worth knowing here, but it does **not** reach mediadive's
+data: the local-path provisioner creates `/mnt/drive2/mediadive` as `root:root`
+mode `0700`, so the `kujoforall` account the share authenticates as cannot
+descend into it. `/mnt/drive2/personal` is a different matter and is not this
+project's concern. If that directory's mode ever changes, this stops being true.

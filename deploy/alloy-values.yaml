@@ -1,0 +1,58 @@
+# Grafana Alloy — installed by hand at bootstrap (BOOTSTRAP.md step 8).
+#
+#   helm upgrade --install alloy grafana/alloy -n observability \
+#     --version 1.12.1 -f deploy/alloy-values.yaml
+#
+# Alloy rather than Promtail: lighter, and Promtail is deprecated. The chart
+# ships with an empty config, so without the block below Alloy runs and
+# collects nothing — which looks identical to working until someone goes
+# looking for a log line.
+#
+# Logs are read through the Kubernetes API (`loki.source.kubernetes`) rather
+# than by tailing /var/log/pods, so the DaemonSet needs no hostPath mount.
+
+alloy:
+  configMap:
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+        // Drop containers that have not started; tailing them only produces
+        // errors until the kubelet catches up.
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Pending|Succeeded|Failed"
+          action        = "drop"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push"
+        }
+      }
