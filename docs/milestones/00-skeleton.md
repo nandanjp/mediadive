@@ -62,19 +62,19 @@ needs them.
 Written before cluster work, because that runs in a **separate session with none
 of this context**.
 
-- [ ] `deploy/` skeleton exists, so Argo has a real path to target
-- [ ] root `CLAUDE.md`: what mediadive is · map of `docs/` · the three standing
+- [x] `deploy/` skeleton exists, so Argo has a real path to target
+- [x] root `CLAUDE.md`: what mediadive is · map of `docs/` · the three standing
       constraints · hard rules (never commit the age private key, never push to
       `main`, docs are the spec) · pointer to the runbook
-- [ ] `deploy/BOOTSTRAP.md`:
-  - [ ] facts table to fill in and commit — nodes, disk paths and what each holds,
+- [x] `deploy/BOOTSTRAP.md`:
+  - [x] facts table to fill in and commit — nodes, disk paths and what each holds,
         app hostname, image hostname, Cloudflare account and tunnel name, k3s
         version
-  - [ ] pinned versions for k3s, Argo CD, Argo Rollouts, CloudNativePG, Garage,
+  - [x] pinned versions for k3s, Argo CD, Argo Rollouts, CloudNativePG, Garage,
         Meilisearch, Redis, Prometheus stack, Loki
-  - [ ] ordered steps, each with a verification command and expected output
-  - [ ] interactive steps flagged — `cloudflared tunnel login` needs a human
-  - [ ] failure guidance, and which steps are safe to re-run
+  - [x] ordered steps, each with a verification command and expected output
+  - [x] interactive steps flagged — `cloudflared tunnel login` needs a human
+  - [x] failure guidance, and which steps are safe to re-run
 
 **Handoff contract.** The bootstrap session commits back: `.sops.yaml` with the
 age **public** recipient, the filled facts table, SOPS-encrypted secrets for the

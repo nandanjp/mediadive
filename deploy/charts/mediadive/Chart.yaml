@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mediadive
+description: mediadive — api, worker, web, and their stateful dependencies
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
