@@ -1,0 +1,48 @@
+{{- $pg := .Values.postgres }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
+  labels: {{- include "mediadive.labels" . | nindent 4 }}
+spec:
+  instances: {{ $pg.instances }}
+  imageName: ghcr.io/cloudnative-pg/postgresql:{{ $pg.majorVersion }}
+
+  storage:
+    size: {{ $pg.storage }}
+    storageClass: {{ .Values.storageClass }}
+
+  bootstrap:
+    initdb:
+      database: {{ $pg.database }}
+      owner: {{ $pg.owner }}
+
+  backup:
+    # Base backups and WAL archiving to Garage. Note this shares one disk with
+    # the Postgres volume — an accepted risk recorded in docs/ARCHITECTURE.md,
+    # which is why the restore procedure is tested during bootstrap.
+    barmanObjectStore:
+      destinationPath: s3://{{ .Values.garage.buckets.backups }}/postgres
+      endpointURL: http://garage:3900
+      s3Credentials:
+        accessKeyId:
+          name: garage-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: garage-credentials
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+    retentionPolicy: {{ $pg.backup.retention | quote }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: postgres-daily
+  labels: {{- include "mediadive.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $pg.backup.schedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: postgres

@@ -1,14 +1,61 @@
 # Values for the mediadive umbrella chart.
 #
-# Reconciled by Argo CD from this repository. Secrets live in SOPS-encrypted
-# files alongside this one and are decrypted by the helm-secrets plugin — see
-# deploy/BOOTSTRAP.md.
+# Reconciled by Argo CD from this repository. Secret values come from a
+# SOPS-encrypted values file decrypted by the helm-secrets plugin — see
+# secrets.example.yaml and deploy/BOOTSTRAP.md.
+
+hostname: mediadive.nandan-hl.dev
+
+# Provisioned during bootstrap against /mnt/drive2. Requesting a disk by class
+# name keeps host paths out of the chart.
+storageClass: mediadive-data
 
 image:
   registry: ghcr.io/nandanjp
+  pullPolicy: IfNotPresent
 
   # Bumped by CI on every merge to main, to the git SHA that produced the
-  # images. `unset` means nothing has been deployed yet — the
-  # backward-compatibility check reads this to know it has no previous release
-  # to compare against.
+  # images. `unset` means nothing has been deployed yet, which has two effects:
+  # the backward-compatibility check stays inert, and the application templates
+  # do not render — so the first Argo sync brings up only the stateful
+  # components rather than pods that cannot pull an image.
   tag: unset
+
+api:
+  replicas: 2
+  port: 8080
+
+worker:
+  replicas: 1
+
+web:
+  replicas: 2
+  port: 3000
+
+postgres:
+  instances: 1
+  majorVersion: 18
+  storage: 20Gi
+  database: mediadive
+  owner: mediadive
+  backup:
+    # Six-field cron: CloudNativePG includes seconds.
+    schedule: "0 0 3 * * *"
+    retention: 30d
+
+garage:
+  storage: 50Gi
+  # Garage needs its capacity declared in bytes with a suffix, and it must be
+  # below the volume size so the volume cannot fill completely.
+  capacity: 40GB
+  zone: home
+  buckets:
+    objects: mediadive
+    backups: mediadive-backups
+  keyName: mediadive
+
+redis:
+  maxmemory: 256mb
+
+meilisearch:
+  storage: 10Gi
