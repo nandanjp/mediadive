@@ -49,6 +49,8 @@ garage:
   # below the volume size so the volume cannot fill completely.
   capacity: 40GB
   zone: home
+  # Garage's own SigV4 region name. Clients must sign with the same value.
+  region: garage
   buckets:
     objects: mediadive
     backups: mediadive-backups

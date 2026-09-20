@@ -20,7 +20,7 @@ stringData:
     rpc_secret = "{{ include "mediadive.secret" (dict "root" . "path" "garage.rpcSecret") }}"
 
     [s3_api]
-    s3_region = "garage"
+    s3_region = "{{ $g.region }}"
     api_bind_addr = "[::]:3900"
     root_domain = ".s3.garage.internal"
 
@@ -42,6 +42,12 @@ stringData:
   # Consumed by CloudNativePG for backups, and by the init Job to import the key.
   ACCESS_KEY_ID: "{{ include "mediadive.secret" (dict "root" . "path" "garage.accessKeyId") }}"
   SECRET_ACCESS_KEY: "{{ include "mediadive.secret" (dict "root" . "path" "garage.secretAccessKey") }}"
+  # Garage signs SigV4 against its own region name, and boto3 has no default to
+  # fall back on. Without this, barman's HeadBucket is rejected with a bare
+  # `400 Bad Request` and WAL archiving fails with no useful message.
+  REGION: "{{ $g.region }}"
+  # The init Job drives the admin API rather than the garage CLI; see the Job.
+  ADMIN_TOKEN: "{{ include "mediadive.secret" (dict "root" . "path" "garage.adminToken") }}"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -130,42 +136,135 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: init
-          image: dxflrs/garage:v2.1.0
-          command: ["/bin/sh", "-c"]
+          # NOT the garage image. `dxflrs/garage` is built from scratch — it
+          # contains `/garage` and nothing else, no /bin/sh — so any shell
+          # script here dies at container creation with
+          # `exec: "/bin/sh": no such file or directory` and produces no logs.
+          #
+          # The CLI is unusable from a separate pod anyway: it reaches the
+          # server over RPC on 3901, which `rpc_public_addr` pins to
+          # 127.0.0.1 and which the Service does not publish. The admin API on
+          # 3903 has none of those problems, so this drives that instead.
+          #
+          # Python rather than curl because every step needs a field out of a
+          # JSON response, and neither the curl nor the alpine image ships jq.
+          # The standard library covers it with no packages to install at run
+          # time.
+          image: python:3.13-alpine
+          command: ["python3", "-c"]
           args:
             - |
-              set -eu
-              until /garage status >/dev/null 2>&1; do
-                echo "waiting for garage rpc"; sleep 2
-              done
+              import json, os, sys, time, urllib.error, urllib.request
 
-              # A node with no role has not been given a layout yet.
-              if /garage status | grep -q 'NO ROLE ASSIGNED'; then
-                id="$(/garage node id -q | cut -d@ -f1)"
-                echo "assigning layout to ${id}"
-                /garage layout assign -z {{ $g.zone }} -c {{ $g.capacity }} "${id}"
-                /garage layout apply --version 1
-              else
-                echo "layout already assigned"
-              fi
+              ADMIN   = "http://garage:3903"
+              TOKEN   = os.environ["ADMIN_TOKEN"]
+              KEY_ID  = os.environ["ACCESS_KEY_ID"]
+              KEY_SEC = os.environ["SECRET_ACCESS_KEY"]
+              KEY_NAME = {{ $g.keyName | quote }}
+              ZONE     = {{ $g.zone | quote }}
+              CAPACITY = {{ $g.capacity | quote }}
+              OBJECTS  = {{ $g.buckets.objects | quote }}
+              BACKUPS  = {{ $g.buckets.backups | quote }}
 
-              /garage key import --yes -n {{ $g.keyName }} \
-                "${ACCESS_KEY_ID}" "${SECRET_ACCESS_KEY}" || echo "key already present"
+              def api(method, path, body=None):
+                  data = json.dumps(body).encode() if body is not None else None
+                  req = urllib.request.Request(ADMIN + path, data=data, method=method)
+                  req.add_header("Authorization", "Bearer " + TOKEN)
+                  if data:
+                      req.add_header("Content-Type", "application/json")
+                  try:
+                      with urllib.request.urlopen(req, timeout=30) as r:
+                          raw = r.read()
+                          return r.status, (json.loads(raw) if raw else None)
+                  except urllib.error.HTTPError as e:
+                      return e.code, e.read().decode("utf-8", "replace")
+                  except urllib.error.URLError as e:
+                      return 0, str(e)
 
-              for bucket in {{ $g.buckets.objects }} {{ $g.buckets.backups }}; do
-                /garage bucket create "${bucket}" || echo "${bucket} already exists"
-                /garage bucket allow --read --write "${bucket}" --key {{ $g.keyName }}
-              done
+              def need(code, body, what, ok=(200,)):
+                  if code not in ok:
+                      sys.exit("%s failed: HTTP %s %s" % (what, code, body))
+                  return body
 
-              # Public read for images; the backup bucket stays private.
-              /garage bucket website --allow {{ $g.buckets.objects }}
-              echo "garage init complete"
+              def to_bytes(v):
+                  # Garage's CLI takes "40GB"; the API wants an integer.
+                  t = str(v).strip().upper()
+                  for suffix, mult in (("TIB", 1024 ** 4), ("GIB", 1024 ** 3),
+                                       ("MIB", 1024 ** 2), ("TB", 10 ** 12),
+                                       ("GB", 10 ** 9), ("MB", 10 ** 6)):
+                      if t.endswith(suffix):
+                          return int(float(t[: -len(suffix)]) * mult)
+                  return int(t)
+
+              # Every step below is guarded, because this runs as a
+              # post-upgrade hook — it executes on each sync, and a hook that
+              # fails the second time blocks every later deploy.
+
+              for _ in range(150):
+                  code, _b = api("GET", "/v2/GetClusterStatus")
+                  if code == 200:
+                      break
+                  print("waiting for the garage admin api", flush=True)
+                  time.sleep(2)
+              else:
+                  sys.exit("garage admin api never became ready")
+
+              status = need(*api("GET", "/v2/GetClusterStatus"), "GetClusterStatus")
+              nodes = status["nodes"]
+              if len(nodes) != 1:
+                  sys.exit("expected exactly one garage node, found %d" % len(nodes))
+              node = nodes[0]
+
+              if node.get("role"):
+                  print("layout already assigned")
+              else:
+                  layout = need(*api("GET", "/v2/GetClusterLayout"), "GetClusterLayout")
+                  need(*api("POST", "/v2/UpdateClusterLayout", {
+                      "roles": [{"id": node["id"], "zone": ZONE,
+                                 "capacity": to_bytes(CAPACITY), "tags": []}],
+                  }), "UpdateClusterLayout")
+                  need(*api("POST", "/v2/ApplyClusterLayout",
+                            {"version": layout["version"] + 1}), "ApplyClusterLayout")
+                  print("layout applied: zone=%s capacity=%s" % (ZONE, CAPACITY))
+
+              code, _b = api("GET", "/v2/GetKeyInfo?id=" + KEY_ID)
+              if code == 200:
+                  print("s3 key already imported")
+              else:
+                  need(*api("POST", "/v2/ImportKey", {
+                      "accessKeyId": KEY_ID,
+                      "secretAccessKey": KEY_SEC,
+                      "name": KEY_NAME,
+                  }), "ImportKey")
+                  print("s3 key imported")
+
+              for alias, website in ((OBJECTS, True), (BACKUPS, False)):
+                  code, info = api("GET", "/v2/GetBucketInfo?globalAlias=" + alias)
+                  if code == 404:
+                      # CreateBucket answers 409 if it lost a race with another
+                      # run; re-read rather than fail.
+                      code, info = api("POST", "/v2/CreateBucket", {"globalAlias": alias})
+                      if code == 409:
+                          code, info = api("GET", "/v2/GetBucketInfo?globalAlias=" + alias)
+                      need(code, info, "CreateBucket " + alias)
+                      print("bucket created: " + alias)
+                  else:
+                      need(code, info, "GetBucketInfo " + alias)
+
+                  need(*api("POST", "/v2/AllowBucketKey", {
+                      "bucketId": info["id"],
+                      "accessKeyId": KEY_ID,
+                      "permissions": {"read": True, "write": True, "owner": False},
+                  }), "AllowBucketKey " + alias)
+
+                  # Public read for images; the backup bucket stays private.
+                  if website and not info.get("websiteAccess"):
+                      need(*api("POST", "/v2/UpdateBucket?id=" + info["id"], {
+                          "websiteAccess": {"enabled": True, "indexDocument": "index.html"},
+                      }), "UpdateBucket " + alias)
+                      print("website access enabled: " + alias)
+
+              print("garage init complete")
           envFrom:
             - secretRef:
                 name: garage-credentials
-          volumeMounts:
-            - { name: config, mountPath: /etc/garage.toml, subPath: garage.toml, readOnly: true }
-      volumes:
-        - name: config
-          secret:
-            secretName: garage-config
