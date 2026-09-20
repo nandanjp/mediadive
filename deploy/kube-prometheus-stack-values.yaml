@@ -1,0 +1,43 @@
+# kube-prometheus-stack — installed by hand at bootstrap (BOOTSTRAP.md step 8).
+#
+#   helm upgrade --install kube-prometheus-stack \
+#     prometheus-community/kube-prometheus-stack -n observability \
+#     --version 91.4.1 -f deploy/kube-prometheus-stack-values.yaml
+#
+# What this stack is here for is the ServiceMonitor CRD, which lets the
+# mediadive chart declare scraping for `api` and `worker` — see
+# docs/ARCHITECTURE.md.
+
+prometheus:
+  prometheusSpec:
+    # Pinned deliberately: the default grows without bound and would eventually
+    # fill /mnt/drive2, which also holds Postgres and its backups.
+    retention: 7d
+    retentionSize: 20GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: mediadive-data
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 25Gi
+
+grafana:
+  persistence:
+    enabled: true
+    storageClassName: mediadive-data
+    size: 5Gi
+
+# k3s runs the control plane inside a single process rather than as discrete
+# static pods, so these scrape targets do not exist. Left enabled they are
+# permanently-down targets and permanently-firing *Down alerts, which trains
+# everyone to ignore the alert list.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false

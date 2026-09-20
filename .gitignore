@@ -6,3 +6,9 @@ node_modules/
 !.env.example
 *.tsbuildinfo
 .DS_Store
+
+# Never commit a private key. The age key lives in the cluster and a password
+# manager only — see deploy/BOOTSTRAP.md step 3.
+age.key
+*.agekey
+keys.txt
