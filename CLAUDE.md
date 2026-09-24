@@ -44,6 +44,26 @@ These are easy to violate months later, and two of the three are enforced by CI.
 - After changing any SQL, run `just prepare` — the workspace compiles against
   committed `.sqlx` metadata.
 
+## Tooling runs through Docker
+
+`helm`, `kubeconform`, `sops`, `yq` and `actionlint` are **not installed
+locally** — they run as containers, so the toolchain needs no host setup and
+cannot drift between machines:
+
+```
+docker run --rm -v "$PWD":/charts alpine/helm:latest template ... 
+docker run --rm -i ghcr.io/yannh/kubeconform:latest -strict -ignore-missing-schemas < rendered.yaml
+docker run --rm -v "$PWD":/repo -w /repo ghcr.io/getsops/sops:v3.13.3 --encrypt --in-place <file>
+docker run --rm -v "$PWD":/repo --workdir /repo rhysd/actionlint:latest
+```
+
+Validate charts with **both** `helm lint` and `kubeconform`. `helm lint` passes
+YAML that the API server rejects — it missed a duplicate map key that
+`kubeconform` caught.
+
+Installed on the host: `rust` (pinned by `rust-toolchain.toml`), `sqlx-cli`,
+`pnpm`, `just`, `docker`, `kubectl`.
+
 ## Commands
 
 `just` is for humans; CI calls `cargo` and `pnpm` directly.
